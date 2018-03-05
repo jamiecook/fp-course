@@ -58,7 +58,7 @@ To test this module, load ghci in the root of the project directory, and do
 Example output:
 
 $ ghci
-GHCi, version ... 
+GHCi, version ...
 Loading package...
 Loading ...
 [ 1 of 28] Compiling (etc...
@@ -125,3 +125,9 @@ printFile ::
   -> IO ()
 printFile =
   error "todo: Course.FileIO#printFile"
+
+traverz :: Applicative f => (a -> f b) -> List a -> f (List b)
+traverz f = sequence . (f <$>)
+
+traverse_ :: Applicative f => (a -> f b) -> List a -> f ()
+traverse_ f = void . traverz f

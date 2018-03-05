@@ -40,7 +40,7 @@ instance Show a => Show (ParseResult a) where
     "Parse failed"
   show (Result i a) =
     stringconcat ["Result >", hlist i, "< ", show a]
-  
+
 instance Functor ParseResult where
   _ <$> UnexpectedEof =
     UnexpectedEof
@@ -83,20 +83,15 @@ unexpectedCharParser c =
 --
 -- >>> parse (valueParser 3) "abc"
 -- Result >abc< 3
-valueParser ::
-  a
-  -> Parser a
-valueParser =
-  error "todo: Course.Parser#valueParser"
+valueParser :: a -> Parser a
+valueParser a = P (\input -> Result input a)
 
 -- | Return a parser that always fails with the given error.
 --
--- >>> isErrorResult (parse (failed Failed) "abc")
+-- >>> isErrorResult (parse (failed) "abc")
 -- True
-failed ::
-  Parser a
-failed =
-  error "todo: Course.Parser#failed"
+failed :: Parser a
+failed = P (\_ -> Failed)
 
 -- | Return a parser that succeeds with a character off the input or fails with an error if the input is empty.
 --
@@ -107,8 +102,9 @@ failed =
 -- True
 character ::
   Parser Char
-character =
-  error "todo: Course.Parser#character"
+character = P f
+  where f Nil = UnexpectedEof
+        f (h:.t) = Result t h
 
 -- | Return a parser that maps any succeeding result with the given function.
 --
@@ -117,21 +113,16 @@ character =
 --
 -- >>> parse (mapParser (+10) (valueParser 7)) ""
 -- Result >< 17
-mapParser ::
-  (a -> b)
-  -> Parser a
-  -> Parser b
-mapParser =
-  error "todo: Course.Parser#mapParser"
+--
+-- parse :: Parser a -> (a -> ParseResult a)
+mapParser :: (a -> b) -> Parser a -> Parser b
+mapParser f pa = P (\input -> case ((parse pa) input) of
+                                result -> f <$> result)
 
 -- | This is @mapParser@ with the arguments flipped.
 -- It might be more helpful to use this function if you prefer this argument order.
-flmapParser ::
-  Parser a
-  -> (a -> b)
-  -> Parser b
-flmapParser =
-  flip mapParser
+flmapParser :: Parser a -> (a -> b) -> Parser b
+flmapParser = flip mapParser
 
 -- | Return a parser that puts its input into the given parser and
 --
@@ -154,21 +145,20 @@ flmapParser =
 --
 -- >>> isErrorResult (parse (bindParser (\c -> if c == 'x' then character else valueParser 'v') character) "x")
 -- True
-bindParser ::
-  (a -> Parser b)
-  -> Parser a
-  -> Parser b
-bindParser =
-  error "todo: Course.Parser#bindParser"
+bindParser :: (a -> Parser b) -> Parser a -> Parser b
+bindParser a2pb pa = P (\input -> useResult ((parse pa) input))
+  where useResult (Result rem' a)    = parse (a2pb a) rem'
+        useResult UnexpectedEof      = UnexpectedEof
+        useResult (ExpectedEof i)    = ExpectedEof i
+        useResult (UnexpectedChar c) = UnexpectedChar c
+        useResult Failed             = Failed
+
+
 
 -- | This is @bindParser@ with the arguments flipped.
 -- It might be more helpful to use this function if you prefer this argument order.
-flbindParser ::
-  Parser a
-  -> (a -> Parser b)
-  -> Parser b
-flbindParser =
-  flip bindParser
+flbindParser :: Parser a -> (a -> Parser b) -> Parser b
+flbindParser = flip bindParser
 
 -- | Return a parser that puts its input into the given parser and
 --
@@ -184,12 +174,8 @@ flbindParser =
 --
 -- >>> isErrorResult (parse (character >>> valueParser 'v') "")
 -- True
-(>>>) ::
-  Parser a
-  -> Parser b
-  -> Parser b
-(>>>) =
-  error "todo: Course.Parser#(>>>)"
+(>>>) :: Parser a -> Parser b -> Parser b
+(>>>) pa pb = bindParser (\_ -> pb) pa
 
 -- | Return a parser that tries the first parser for a successful value.
 --
@@ -200,20 +186,18 @@ flbindParser =
 -- >>> parse (character ||| valueParser 'v') ""
 -- Result >< 'v'
 --
--- >>> parse (failed Failed ||| valueParser 'v') ""
+-- >>> parse (failed ||| valueParser 'v') ""
 -- Result >< 'v'
 --
 -- >>> parse (character ||| valueParser 'v') "abc"
 -- Result >bc< 'a'
 --
--- >>> parse (failed Failed ||| valueParser 'v') "abc"
+-- >>> parse (failed ||| valueParser 'v') "abc"
 -- Result >abc< 'v'
-(|||) ::
-  Parser a
-  -> Parser a
-  -> Parser a
-(|||) =
-  error "todo: Course.Parser#(|||)"
+(|||) :: Parser a -> Parser a -> Parser a
+(|||) pa pa' = P (\i -> case ((parse pa) i) of
+                         r@(Result _ _) -> r
+                         _ -> (parse pa') i)
 
 infixl 3 |||
 
@@ -238,11 +222,12 @@ infixl 3 |||
 --
 -- >>> parse (list (character *> valueParser 'v')) ""
 -- Result >< ""
-list ::
-  Parser a
-  -> Parser (List a)
-list =
-  error "todo: Course.Parser#list"
+--
+-- list1 :: Parser a -> Parser (List a)
+-- valueParser :: a -> Parser a
+-- (|||) :: Parser a -> Parser a -> Parser a
+list :: Parser a -> Parser (List a)
+list pa = list1 pa ||| valueParser Nil
 
 -- | Return a parser that produces at least one value from the given parser then
 -- continues producing a list of values from the given parser (to ultimately produce a non-empty list).
@@ -257,11 +242,13 @@ list =
 --
 -- >>> isErrorResult (parse (list1 (character *> valueParser 'v')) "")
 -- True
-list1 ::
-  Parser a
-  -> Parser (List a)
-list1 =
-  error "todo: Course.Parser#list1"
+--
+--
+-- bindParser :: (a -> Parser b) -> Parser a -> Parser b
+list1 :: Parser a -> Parser (List a)
+list1 pa = pa `flbindParser` \a ->
+             (list pa) `flbindParser` \b ->
+                pure (a :. b)
 
 -- | Return a parser that produces a character but fails if
 --
@@ -597,33 +584,22 @@ personParser =
 -- | Write a Functor instance for a @Parser@.
 -- /Tip:/ Use @bindParser@ and @valueParser@.
 instance Functor Parser where
-  (<$>) ::
-    (a -> b)
-    -> Parser a
-    -> Parser b
-  (<$>) =
-     error "todo: Course.Parser (<$>)#instance Parser"
+  (<$>) :: (a -> b) -> Parser a -> Parser b
+  (<$>) = mapParser
 
 -- | Write an Applicative functor instance for a @Parser@.
 -- /Tip:/ Use @bindParser@ and @valueParser@.
 instance Applicative Parser where
-  pure ::
-    a
-    -> Parser a
-  pure =
-    error "todo: Course.Parser pure#instance Parser"
-  (<*>) ::
-    Parser (a -> b)
-    -> Parser a
-    -> Parser b
-  (<*>) =
-    error "todo: Course.Parser (<*>)#instance Parser"
+  pure :: a -> Parser a
+  pure = valueParser
+
+  (<*>) :: Parser (a -> b) -> Parser a -> Parser b
+  (<*>) pf pa = do
+    f <- pf
+    a <- pa
+    pure $ f a
 
 -- | Write a Monad instance for a @Parser@.
 instance Monad Parser where
-  (=<<) ::
-    (a -> Parser b)
-    -> Parser a
-    -> Parser b
-  (=<<) =
-    error "todo: Course.Parser (=<<)#instance Parser"
+  (=<<) :: (a -> Parser b) -> Parser a -> Parser b
+  (=<<) = bindParser

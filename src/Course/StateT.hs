@@ -16,6 +16,7 @@ import Course.Monad
 import Course.State
 import qualified Data.Set as S
 import qualified Prelude as P
+import qualified Data.Bifunctor as Bi
 
 -- $setup
 -- >>> import Test.QuickCheck
@@ -25,9 +26,7 @@ import qualified Prelude as P
 -- | A `StateT` is a function from a state value `s` to a functor f of (a produced value `a`, and a resulting state `s`).
 newtype StateT s f a =
   StateT {
-    runStateT ::
-      s
-      -> f (a, s)
+    runStateT :: s -> f (a, s)
   }
 
 -- | Implement the `Functor` instance for @StateT s f@ given a @Functor f@.
@@ -35,12 +34,8 @@ newtype StateT s f a =
 -- >>> runStateT ((+1) <$> (pure 2) :: StateT Int List Int) 0
 -- [(3,0)]
 instance Functor f => Functor (StateT s f) where
-  (<$>) ::
-    (a -> b)
-    -> StateT s f a
-    -> StateT s f b
-  (<$>) =
-    error "todo: Course.StateT (<$>)#instance (StateT s f)"
+  (<$>) :: (a -> b) -> StateT s f a -> StateT s f b
+  (<$>) f sa = StateT $ (Bi.first f <$>) . runStateT sa
 
 -- | Implement the `Applicative` instance for @StateT s f@ given a @Monad f@.
 --
@@ -60,17 +55,14 @@ instance Functor f => Functor (StateT s f) where
 -- >>> runStateT (StateT (\s -> ((+2), s P.++ [1]) :. ((+3), s P.++ [1]) :. Nil) <*> (StateT (\s -> (2, s P.++ [2]) :. Nil))) [0]
 -- [(4,[0,1,2]),(5,[0,1,2])]
 instance Monad f => Applicative (StateT s f) where
-  pure ::
-    a
-    -> StateT s f a
-  pure =
-    error "todo: Course.StateT pure#instance (StateT s f)"
-  (<*>) ::
-   StateT s f (a -> b)
-    -> StateT s f a
-    -> StateT s f b
-  (<*>) =
-    error "todo: Course.StateT (<*>)#instance (StateT s f)"
+  pure :: a -> StateT s f a
+  pure a = StateT $ \s -> pure (a,s)
+
+  (<*>) :: StateT s f (a -> b) -> StateT s f a -> StateT s f b
+  (<*>) s_f s_a = StateT $ \s -> do
+     (f,s1) <- runStateT s_f s
+     (a,s2) <- runStateT s_a s1
+     pure (f a, s2)
 
 -- | Implement the `Monad` instance for @StateT s f@ given a @Monad f@.
 -- Make sure the state value is passed through in `bind`.
@@ -81,10 +73,7 @@ instance Monad f => Applicative (StateT s f) where
 -- >>> let modify f = StateT (\s -> pure ((), f s)) in runStateT (modify (+1) >>= \() -> modify (*2)) 7
 -- ((),16)
 instance Monad f => Monad (StateT s f) where
-  (=<<) ::
-    (a -> StateT s f b)
-    -> StateT s f a
-    -> StateT s f b
+  (=<<) :: (a -> StateT s f b) -> StateT s f a -> StateT s f b
   (=<<) =
     error "todo: Course.StateT (=<<)#instance (StateT s f)"
 

@@ -20,10 +20,7 @@ import qualified Prelude as P((=<<))
 --   `∀f g x. g =<< (f =<< x) ≅ ((g =<<) . f) =<< x`
 class Applicative f => Monad f where
   -- Pronounced, bind.
-  (=<<) ::
-    (a -> f b)
-    -> f a
-    -> f b
+  (=<<) :: (a -> f b) -> f a -> f b
 
 infixr 1 =<<
 
@@ -58,13 +55,18 @@ infixr 1 =<<
 --
 -- >>> ((*) <**> (+2)) 3
 -- 15
-(<**>) ::
-  Monad f =>
-  f (a -> b)
-  -> f a
-  -> f b
-(<**>) =
-  error "todo: Course.Monad#(<**>)"
+
+-- (=<<)    :: (a -> f b) -> f a -> f b
+-- flipBind :: f a -> (a -> f b) -> f b
+-- <$>   :: (a ->   b) -> f a -> f b
+-- pure  :: a -> f a
+-- f_ab  :: f (a -> b)
+-- fa    :: f a
+(<**>) :: Monad f => f (a -> b) -> f a -> f b
+(<**>) f_ab fa = flipBind f_ab (\l -> flipBind fa (\x -> pure $ l x))
+  where flipBind = flip (=<<)
+
+
 
 infixl 4 <**>
 
@@ -77,8 +79,7 @@ instance Monad ExactlyOne where
     (a -> ExactlyOne b)
     -> ExactlyOne a
     -> ExactlyOne b
-  (=<<) =
-    error "todo: Course.Monad (=<<)#instance ExactlyOne"
+  (=<<) f (ExactlyOne a) = f a
 
 -- | Binds a function on a List.
 --
@@ -89,8 +90,7 @@ instance Monad List where
     (a -> List b)
     -> List a
     -> List b
-  (=<<) =
-    error "todo: Course.Monad (=<<)#instance List"
+  (=<<) f la = foldRight (++) Nil (f <$> la)
 
 -- | Binds a function on an Optional.
 --
@@ -101,8 +101,8 @@ instance Monad Optional where
     (a -> Optional b)
     -> Optional a
     -> Optional b
-  (=<<) =
-    error "todo: Course.Monad (=<<)#instance Optional"
+  (=<<) f (Full a) = f a
+  (=<<) _ Empty = Empty
 
 -- | Binds a function on the reader ((->) t).
 --
@@ -113,8 +113,7 @@ instance Monad ((->) t) where
     (a -> ((->) t b))
     -> ((->) t a)
     -> ((->) t b)
-  (=<<) =
-    error "todo: Course.Monad (=<<)#instance ((->) t)"
+  (=<<) a2t2b t2a = \t -> a2t2b (t2a t) t
 
 -- | Flattens a combined structure to a single structure.
 --
@@ -129,26 +128,23 @@ instance Monad ((->) t) where
 --
 -- >>> join (+) 7
 -- 14
-join ::
-  Monad f =>
-  f (f a)
-  -> f a
-join =
-  error "todo: Course.Monad#join"
+--    (=<<) :: (a -> f b) -> f a -> f b
+--    sequence :: ...
+join :: Monad f => f (f a) -> f a
+join = (=<<) id
 
 -- | Implement a flipped version of @(=<<)@, however, use only
 -- @join@ and @(<$>)@.
 -- Pronounced, bind flipped.
 --
--- >>> ((+10) >>= (*)) 7
+-- >>> FOO ((+10) >>= (*)) 7
 -- 119
-(>>=) ::
-  Monad f =>
-  f a
-  -> (a -> f b)
-  -> f b
-(>>=) =
-  error "todo: Course.Monad#(>>=)"
+-- join :: Monad f => f (f a) -> f a
+-- <$>      :: (x -> y)   -> f x -> f y
+-- <$> a2fb :: f a -> f (f b)
+--
+(>>=) :: Monad f => f a -> (a -> f b) -> f b
+(>>=) fa a2fb = join $ a2fb <$> fa
 
 infixl 1 >>=
 
@@ -157,14 +153,8 @@ infixl 1 >>=
 --
 -- >>> ((\n -> n :. n :. Nil) <=< (\n -> n+1 :. n+2 :. Nil)) 1
 -- [2,2,3,3]
-(<=<) ::
-  Monad f =>
-  (b -> f c)
-  -> (a -> f b)
-  -> a
-  -> f c
-(<=<) =
-  error "todo: Course.Monad#(<=<)"
+(<=<) :: Monad f => (b -> f c) -> (a -> f b) -> a -> f c
+(<=<) b2fc a2fb a = flip (>>=) b2fc (a2fb a)
 
 infixr 1 <=<
 
